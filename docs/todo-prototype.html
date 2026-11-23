@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Todo ワークスペース | プロトタイプ</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Inter", system-ui, "Hiragino Sans", "Yu Gothic", sans-serif;
+      color: #202238;
+      background: #f6f7fb;
+      --surface: #fff;
+      --muted: #5c6377;
+      --line: #dce0eb;
+      --control-line: #8b93aa;
+      --accent: #5144ca;
+      --accent-strong: #4235b0;
+      --accent-soft: #ebe9ff;
+      --radius: 10px;
+      --gutter: clamp(16px, 4vw, 56px);
+      --status-width: 7rem;
+      --row-gap: clamp(12px, 2vw, 24px);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body, h1, h2, h3, p, ul { margin: 0; }
+    [hidden] { display: none !important; }
+    button, input, textarea, select { font: inherit; }
+    button, select, summary { cursor: pointer; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+    .masthead { background: var(--surface); border-bottom: 1px solid var(--line); }
+    .masthead-inner {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      max-width: 1344px; margin: auto; padding: 14px var(--gutter);
+    }
+    .brand, .header-actions { display: flex; align-items: center; gap: 10px; }
+    .brand h1 { font-size: 1.2rem; font-weight: 790; letter-spacing: -.045em; }
+    .mark {
+      display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center;
+      border-radius: 10px; background: var(--accent); color: white; font-size: 1rem;
+    }
+    .prototype { color: var(--muted); font-size: .75rem; white-space: nowrap; }
+    .workspace {
+      --chat-inset: clamp(12px, 2vw, 28px);
+      --chat-default-height: clamp(360px, 60dvh, 575px);
+      --chat-max-height: max(300px, calc(100dvh - 120px));
+      --chat-size: clamp(300px, var(--chat-height, var(--chat-default-height)), var(--chat-max-height));
+      max-width: 1344px; min-height: calc(100dvh - 69px);
+      margin: auto; padding: clamp(30px, 5vw, 67px) var(--gutter) calc(var(--chat-size) + var(--chat-inset) + 24px);
+    }
+    .todo-pane { min-width: 0; }
+    .list-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+    .list-heading h2, .todo-detail h2 {
+      font-size: clamp(1.7rem, 3vw, 2.4rem); letter-spacing: -.04em;
+      font-weight: 760; line-height: 1.25; overflow-wrap: anywhere;
+    }
+    #todo-count { color: var(--muted); font-size: .875rem; font-variant-numeric: tabular-nums; }
+    .list-columns, .todo {
+      display: grid; grid-template-columns: var(--status-width) minmax(0, 1fr);
+      align-items: center; gap: var(--row-gap);
+    }
+    .list-columns {
+      margin-top: 30px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+      color: var(--muted); font-size: .8125rem; font-weight: 630;
+    }
+    .todo-list { list-style: none; padding: 0; }
+    .todo {
+      position: relative; border-bottom: 1px solid var(--line); cursor: pointer;
+    }
+    .todo:hover, .todo:focus-within { background: #eff0fa; }
+    .todo-open {
+      min-width: 0; min-height: 76px; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 12px 10px 12px 0; border: 0; border-radius: 6px;
+      background: transparent; color: inherit; text-align: left;
+      font-size: 1rem; font-weight: 680; line-height: 1.45;
+    }
+    .todo-open:focus-visible { outline-offset: -3px; }
+    .todo-copy { min-width: 0; overflow-wrap: anywhere; }
+    .todo-preview {
+      display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      margin-top: 4px; font-size: .8125rem; font-weight: 400; color: var(--muted);
+    }
+    .chevron {
+      flex: 0 0 7px; width: 7px; height: 7px;
+      border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); color: var(--muted);
+    }
+    .todo:hover .chevron, .todo:focus-within .chevron { color: var(--accent); }
+
+    .field { display: grid; gap: 8px; align-content: start; min-width: 0; }
+    .field > span { font-weight: 650; font-size: .875rem; }
+    .field small { font-size: .75rem; font-weight: 400; color: var(--muted); margin-left: 5px; }
+    .detail-field { margin-top: 16px; }
+    input, textarea, select {
+      width: 100%; min-width: 0; color: inherit; background: var(--surface);
+      border: 1px solid var(--control-line); border-radius: var(--radius); padding: 10px 12px;
+      font-size: .9375rem; line-height: 1.45;
+    }
+    input::placeholder, textarea::placeholder { color: var(--muted); }
+    textarea { resize: vertical; }
+    .primary, .secondary {
+      min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: var(--radius);
+      font-size: .875rem; font-weight: 680; white-space: nowrap;
+    }
+    .primary { border-color: var(--accent); background: var(--accent); color: white; }
+    .primary:hover { border-color: var(--accent-strong); background: var(--accent-strong); }
+    .secondary { background: transparent; color: var(--accent-strong); }
+    .secondary:hover { background: var(--accent-soft); }
+    .status-control {
+      position: relative; display: inline-flex; align-items: center;
+      width: max-content; color: #49536a;
+    }
+    .status-control[data-status="進行中"] { color: #493b9a; }
+    .status-control[data-status="完了"] { color: #21624e; }
+    .status-control::before, .status-control::after {
+      content: ""; pointer-events: none; position: absolute;
+    }
+    .status-control::before {
+      left: 10px; width: 6px; height: 6px;
+      background: currentColor; border-radius: 50%;
+    }
+    .status-control::after {
+      right: 12px; width: 6px; height: 6px; margin-top: -3px;
+      border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+    }
+    .status {
+      appearance: none; width: var(--status-width); min-height: 36px;
+      border: 1px solid #cdd3e2; border-radius: 99px; padding: 5px 24px 5px 22px;
+      background: #edf0f7; color: inherit; font-size: .8125rem; font-weight: 650;
+    }
+    .status-control[data-status="進行中"] .status { background: #ede9ff; border-color: #d7cff7; }
+    .status-control[data-status="完了"] .status { background: #e1f1eb; border-color: #c6e1d5; }
+    .status-control:hover .status { border-color: currentColor; }
+
+    .todo-detail .field { margin-top: 24px; justify-items: start; }
+    .detail-description { max-width: 42rem; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .detail-description-header { display: flex; align-items: center; gap: 12px; }
+    .detail-description h3 { font-size: 1rem; }
+    #detail-description {
+      margin-top: 8px; max-width: 38em; white-space: pre-wrap; overflow-wrap: anywhere;
+      font-size: 1rem; line-height: 1.8;
+    }
+    #detail-description[data-empty] { color: var(--muted); }
+    #description-form { margin-top: 8px; }
+    #back-to-list { margin-top: 30px; margin-left: -14px; }
+    .feedback { margin-top: 12px; font-size: .875rem; color: var(--accent-strong); }
+    .feedback:empty { display: none; }
+
+    .chat {
+      position: fixed; right: var(--chat-inset); bottom: var(--chat-inset); z-index: 2;
+      display: flex; flex-direction: column; min-width: 0;
+      width: clamp(320px, var(--chat-width, 394px), min(680px, calc(100% - 2 * var(--chat-inset))));
+      height: var(--chat-size);
+      background: var(--surface); border-radius: 20px;
+      box-shadow: 0 8px 32px #222a482b;
+    }
+    .chat-head {
+      display: flex; gap: 12px; align-items: center;
+      padding: 17px 20px 17px 32px; border-bottom: 1px solid var(--line);
+    }
+    .chat-mark { background: var(--accent-soft); color: var(--accent-strong); }
+    .chat-head h2 { font-size: 1rem; line-height: 1.3; }
+    .chat-head p { font-size: .75rem; color: var(--muted); margin-top: 3px; }
+    .messages {
+      flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .messages:focus-visible { outline-offset: -3px; }
+    .message { min-width: 0; max-width: 94%; align-self: flex-start; }
+    .message p {
+      white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font-size: .875rem;
+      background: #f0f1f7; padding: 10px 12px; border-radius: 4px 14px 14px;
+    }
+    .message.user { align-self: flex-end; max-width: 90%; }
+    .message.user p { background: var(--accent-soft); border-radius: 14px 4px 14px 14px; }
+    .message:has(details) { max-width: 100%; width: 100%; }
+    .message:has(details) p { width: fit-content; }
+    details { margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius); }
+    summary { color: var(--accent-strong); padding: 9px 10px; font-size: .8125rem; font-weight: 680; }
+    code, pre { font-family: ui-monospace, Menlo, monospace; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 8px 8px; }
+    .comparison h3 { font-size: .75rem; color: var(--muted); margin: 4px 0; }
+    .comparison pre {
+      margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; background: #f0f1f7;
+      border-radius: 6px; font-size: .75rem; padding: 8px; line-height: 1.55;
+    }
+    .compose { padding: 12px 16px 16px; border-top: 1px solid var(--line); }
+    .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .example {
+      min-height: 30px; background: var(--surface); border: 1px solid var(--line);
+      color: var(--muted); border-radius: 99px; padding: 3px 9px; font-size: .75rem;
+    }
+    .example:hover { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+    .send-row {
+      display: flex; gap: 8px; align-items: flex-end; padding: 5px;
+      border: 1px solid var(--control-line); border-radius: 14px;
+    }
+    .send-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .send-row textarea { min-height: 40px; max-height: 130px; border: 0; padding: 9px 8px; }
+    .notice { margin-top: 8px; font-size: .75rem; color: var(--muted); }
+    .chat-resize {
+      position: absolute; top: 1px; left: 1px;
+      width: 30px; height: 30px; padding: 0; border: 0; border-radius: 17px 8px 8px 6px;
+      background: transparent; color: var(--muted); cursor: nwse-resize;
+      touch-action: none;
+    }
+    .chat-resize:hover, .chat-resize:active { background: var(--accent-soft); color: var(--accent-strong); }
+    .chat-resize:focus-visible { outline-offset: -3px; }
+    .chat-resize::before, .chat-resize::after {
+      content: ""; position: absolute; left: 8px; top: 16px; width: 13px;
+      border-top: 1.5px solid currentColor; transform: rotate(-45deg); transform-origin: left center;
+    }
+    .chat-resize::after { top: 12px; width: 7px; }
+    .create-dialog {
+      padding: 0; width: min(480px, calc(100% - 32px)); border: 0;
+      border-radius: 20px; color: inherit; box-shadow: 0 16px 56px #23214638;
+    }
+    .create-dialog::backdrop { background: #1a1b3877; }
+    .create { padding: clamp(20px, 4vw, 28px); }
+    .create h2 { margin-bottom: 22px; font-size: 1.25rem; }
+    .fields { display: grid; grid-template-columns: minmax(0, 1fr) 7.5rem; gap: 12px; }
+    .create-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+    @media (max-width: 800px) {
+      .workspace {
+        --chat-default-height: clamp(270px, 46dvh, 390px);
+        --chat-max-height: max(270px, 72dvh);
+        --chat-size: clamp(270px, var(--chat-height, var(--chat-default-height)), var(--chat-max-height));
+        padding-top: 25px;
+      }
+      .chat { width: min(394px, calc(100% - 2 * var(--chat-inset))); }
+      .chat-resize { cursor: ns-resize; }
+      .list-columns { margin-top: 20px; }
+      .todo-open { min-height: 68px; }
+    }
+    @media (max-width: 420px) {
+      :root { --status-width: 6.15rem; --row-gap: 10px; }
+      .header-actions { gap: 8px; }
+      .chat-head { padding-right: 14px; }
+      .messages { padding-inline: 14px; }
+      .compose { padding-inline: 11px; }
+      .example { padding-inline: 7px; }
+      .fields { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (forced-colors: active) {
+      .mark, .chat { border: 1px solid CanvasText; }
+      .status { appearance: auto; padding-inline: 8px; }
+      .status-control::before, .status-control::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 操作確認用。データはページ内のメモリーに保持する。 -->
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand"><span class="mark" aria-hidden="true">✓</span><h1>Todo</h1></div>
+      <div class="header-actions">
+        <span class="prototype">モック</span>
+        <button id="open-create" class="primary" type="button" aria-haspopup="dialog">＋ Todo を追加</button>
+      </div>
+    </div>
+  </header>
+  <main class="workspace">
+    <div class="todo-pane">
+      <section id="list-view" aria-labelledby="list-heading">
+        <div class="list-heading">
+          <h2 id="list-heading" tabindex="-1">Todo 一覧</h2>
+          <span id="todo-count"></span>
+        </div>
+        <div class="list-columns" aria-hidden="true"><span>ステータス</span><span>タイトル</span></div>
+        <ul id="todo-list" class="todo-list" aria-labelledby="list-heading"></ul>
+      </section>
+      <section id="detail-view" class="todo-detail" aria-labelledby="detail-title" hidden>
+        <h2 id="detail-title" tabindex="-1"></h2>
+        <label id="detail-status" class="field"><span>ステータス</span></label>
+        <div class="detail-description">
+          <div class="detail-description-header">
+            <h3 id="description-heading">詳細</h3>
+            <button id="edit-description" class="secondary" type="button">詳細を編集</button>
+          </div>
+          <p id="detail-description"></p>
+          <form id="description-form" hidden>
+            <textarea name="description" aria-labelledby="description-heading" rows="5"></textarea>
+            <div class="create-footer">
+              <button id="cancel-description" class="secondary" type="button">キャンセル</button>
+              <button class="primary" type="submit">保存</button>
+            </div>
+          </form>
+        </div>
+        <button id="back-to-list" class="secondary" type="button">← 一覧に戻る</button>
+      </section>
+      <p id="todo-feedback" class="feedback" role="status"></p>
+    </div>
+
+    <dialog id="create-dialog" class="create-dialog" aria-labelledby="create-heading">
+      <form id="todo-form" class="create" aria-labelledby="create-heading">
+        <h2 id="create-heading">Todo を追加</h2>
+        <div class="fields">
+          <label class="field"><span>タイトル <small>必須</small></span>
+            <input name="title" placeholder="例：歯医者を予約する" required autofocus>
+          </label>
+          <label class="field"><span>ステータス</span>
+            <select name="status">
+              <option>未着手</option><option>進行中</option><option>完了</option>
+            </select>
+          </label>
+        </div>
+        <label class="field detail-field"><span>詳細 <small>任意</small></span>
+          <textarea name="description" rows="2" placeholder="メモや補足を入力"></textarea>
+        </label>
+        <div class="create-footer">
+          <button id="cancel-create" class="secondary" type="button">キャンセル</button>
+          <button class="primary" type="submit">＋ 追加</button>
+        </div>
+      </form>
+    </dialog>
+
+    <section class="chat" aria-labelledby="chat-heading">
+      <div class="chat-head">
+        <span class="mark chat-mark" aria-hidden="true">✦</span>
+        <div><h2 id="chat-heading">Todo チャット</h2><p>模擬アシスタント</p></div>
+      </div>
+      <div id="messages" class="messages" role="log" aria-labelledby="chat-heading" tabindex="0">
+        <div class="message"><p>追加したい Todo を教えてください。詳細やステータスも指定できます。</p></div>
+      </div>
+      <form id="chat-form" class="compose">
+        <div class="examples" aria-label="入力例">
+          <button class="example" type="button" data-example="歯医者を予約する、を追加。詳細に「平日の夕方が希望」と入れて。">詳細付きで追加</button>
+          <button class="example" type="button" data-example="「資料を読む」を追加。ステータスは進行中。">ステータスを指定</button>
+          <button class="example" type="button" data-example="来週の件、タスクにして">曖昧な依頼</button>
+        </div>
+        <div class="send-row">
+          <textarea name="request" aria-label="チャットへのメッセージ" placeholder="例：牛乳を買う、を追加" rows="1" required></textarea>
+          <button type="submit" class="primary">送信</button>
+        </div>
+        <p class="notice">再読み込みすると初期状態に戻ります。</p>
+      </form>
+      <button id="chat-resize" class="chat-resize" type="button"
+        aria-label="チャットのサイズを調整（矢印キーでも調整できます）"
+        title="ドラッグしてチャットのサイズを調整"></button>
+    </section>
+  </main>
+  <script>
+    const statuses = ["未着手", "進行中", "完了"];
+
+    function createTodo(args, id) {
+      const title = (args.title ?? "").trim();
+      if (!title || /[\r\n]/.test(title)) {
+        return { ok: false, error: "タイトルを1行で入力してください。" };
+      }
+      const status = args.status ?? statuses[0];
+      if (!statuses.includes(status)) {
+        return { ok: false, error: "未着手、進行中、完了のいずれかを指定してください。" };
+      }
+      return { ok: true, todo: { id, title, description: args.description ?? "", status } };
+    }
+
+    function interpretRequest(request, awaitingTitle) {
+      const separator = request.search(/[。\n]/u);
+      const instruction = separator === -1 ? request : request.slice(0, separator);
+      const options = separator === -1 ? "" : request.slice(separator + 1);
+      let title = instruction.match(/^(.+?)[、,]?\s*(?:を追加(?:してください|して|する)?|を登録(?:してください|して|する)?|[、,]?\s*(?:を)?(?:タスク|Todo)にして)(?:[！!])?$/iu)?.[1];
+      if (!title && !awaitingTitle) {
+        if (/^(?:追加|登録)(?:して|してください)?[！!]?$/u.test(instruction)) {
+          return { question: "どんな Todo を追加しますか？ タイトルを教えてください。", awaitingTitle: true };
+        }
+        return { question: "追加する内容を「〇〇を追加」の形で教えてください。" };
+      }
+
+      title = (title ?? instruction).trim().replace(/[、,]$/u, "").trim();
+      title = title.replace(/^「(.+)」$/u, "$1").replace(/^『(.+)』$/u, "$1");
+      if (/^(?:来週|明日|今日|例|あの|その)の件$/u.test(title)) {
+        return { question: "どんな Todo を追加しますか？ 具体的なタイトルを教えてください。", awaitingTitle: true };
+      }
+
+      const args = { title };
+      const description = options.match(/詳細(?:に|は|へ|[:：])\s*「([^」]*)」/u);
+      const status = options.match(/ステータス(?:は|を|[:：])\s*(?:「([^」]+)」|([^。、\s]+))/u);
+      if (description) args.description = description[1];
+      if (status) args.status = (status[1] ?? status[2]).replace(/(?:に設定して|にして)$/u, "");
+      return { args };
+    }
+  </script>
+  <script>
+    const todos = [
+      { id: 1, title: "来週の打ち合わせを調整する", description: "候補日を3つ出して連絡する", status: "未着手" },
+      { id: 2, title: "見積もりを確認する", description: "", status: "進行中" },
+      { id: 3, title: "図書館の本を返却する", description: "", status: "完了" }
+    ];
+    let nextId = 4;
+    let awaitingTitle = false;
+    let selectedTodo = null;
+    const listView = document.querySelector("#list-view");
+    const todoList = document.querySelector("#todo-list");
+    const todoCount = document.querySelector("#todo-count");
+    const detailView = document.querySelector("#detail-view");
+    const detailTitle = document.querySelector("#detail-title");
+    const detailStatus = document.querySelector("#detail-status");
+    const detailDescription = document.querySelector("#detail-description");
+    const editDescription = document.querySelector("#edit-description");
+    const descriptionForm = document.querySelector("#description-form");
+    const descriptionInput = descriptionForm.elements.namedItem("description");
+    const createDialog = document.querySelector("#create-dialog");
+    const todoForm = document.querySelector("#todo-form");
+    const chatForm = document.querySelector("#chat-form");
+    const titleInput = todoForm.elements.namedItem("title");
+    const requestInput = chatForm.elements.namedItem("request");
+    const messages = document.querySelector("#messages");
+    const feedback = document.querySelector("#todo-feedback");
+    const workspace = document.querySelector(".workspace");
+    const chat = document.querySelector(".chat");
+    const chatResize = document.querySelector("#chat-resize");
+    const narrowLayout = window.matchMedia("(max-width: 800px)");
+    let chatDrag = null;
+
+    function resizeChat(width, height) {
+      if (!narrowLayout.matches) workspace.style.setProperty("--chat-width", `${width}px`);
+      workspace.style.setProperty("--chat-height", `${height}px`);
+    }
+
+    chatResize.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || chatDrag) return;
+      const { width, height } = chat.getBoundingClientRect();
+      chatDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, width, height };
+      chatResize.setPointerCapture(event.pointerId);
+    });
+
+    chatResize.addEventListener("pointermove", event => {
+      if (chatDrag?.id !== event.pointerId) return;
+      resizeChat(chatDrag.width + chatDrag.x - event.clientX, chatDrag.height + chatDrag.y - event.clientY);
+    });
+
+    for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      chatResize.addEventListener(eventName, event => {
+        if (chatDrag?.id === event.pointerId) chatDrag = null;
+      });
+    }
+
+    const resizeSteps = {
+      ArrowLeft: [24, 0],
+      ArrowRight: [-24, 0],
+      ArrowUp: [0, 24],
+      ArrowDown: [0, -24]
+    };
+    chatResize.addEventListener("keydown", event => {
+      const step = resizeSteps[event.key];
+      if (!step || (narrowLayout.matches && step[0])) return;
+      event.preventDefault();
+      const { width, height } = chat.getBoundingClientRect();
+      resizeChat(width + step[0], height + step[1]);
+    });
+
+    function element(tag, text, className) {
+      const node = document.createElement(tag);
+      node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    }
+
+    function statusSelect(todo, accessibleLabel) {
+      const control = element("span", "", "status-control");
+      const select = element("select", "", "status");
+      if (accessibleLabel) select.setAttribute("aria-label", accessibleLabel);
+      select.append(...statuses.map(status => element("option", status)));
+      select.value = todo.status;
+      control.dataset.status = todo.status;
+      select.addEventListener("change", () => {
+        todo.status = select.value;
+        control.dataset.status = todo.status;
+        renderCount();
+      });
+      control.append(select);
+      return control;
+    }
+
+    function showDescription() {
+      const description = selectedTodo.description;
+      const isEmpty = !description.trim();
+      detailDescription.textContent = isEmpty ? "詳細はありません。" : description;
+      detailDescription.toggleAttribute("data-empty", isEmpty);
+      detailDescription.hidden = false;
+      editDescription.hidden = false;
+      descriptionForm.hidden = true;
+    }
+
+    function openDetail(todo) {
+      selectedTodo = todo;
+      detailTitle.textContent = todo.title;
+      detailStatus.querySelector(".status-control")?.remove();
+      detailStatus.append(statusSelect(todo));
+      showDescription();
+      feedback.textContent = "";
+      listView.hidden = true;
+      detailView.hidden = false;
+      detailTitle.focus();
+    }
+
+    function renderTodos() {
+      const rows = todos.map(todo => {
+        const row = element("li", "", "todo");
+        const open = element("button", "", "todo-open");
+        open.type = "button";
+        open.dataset.todoId = todo.id;
+        open.setAttribute("aria-label", `${todo.title}の詳細を開く`);
+        const copy = element("span", todo.title, "todo-copy");
+        const preview = todo.description.trim();
+        if (preview) copy.append(element("span", preview, "todo-preview"));
+        const chevron = element("span", "", "chevron");
+        chevron.setAttribute("aria-hidden", "true");
+        open.append(copy, chevron);
+        row.append(statusSelect(todo, `${todo.title}のステータス`), open);
+        row.addEventListener("click", event => {
+          if (!event.target.closest(".status-control")) openDetail(todo);
+        });
+        return row;
+      });
+      todoList.replaceChildren(...rows);
+      renderCount();
+    }
+
+    function renderCount() {
+      const completed = todos.filter(todo => todo.status === "完了").length;
+      todoCount.textContent = `全${todos.length}件 · ${completed}件完了`;
+    }
+
+    document.querySelector("#back-to-list").addEventListener("click", () => {
+      renderTodos();
+      feedback.textContent = "";
+      detailView.hidden = true;
+      listView.hidden = false;
+      todoList.querySelector(`[data-todo-id="${selectedTodo.id}"]`).focus();
+      selectedTodo = null;
+    });
+
+    editDescription.addEventListener("click", () => {
+      feedback.textContent = "";
+      descriptionInput.value = selectedTodo.description;
+      editDescription.hidden = true;
+      detailDescription.hidden = true;
+      descriptionForm.hidden = false;
+      descriptionInput.focus();
+    });
+
+    descriptionForm.addEventListener("submit", event => {
+      event.preventDefault();
+      selectedTodo.description = descriptionInput.value;
+      showDescription();
+      feedback.textContent = "詳細を保存しました。";
+      editDescription.focus();
+    });
+
+    document.querySelector("#cancel-description").addEventListener("click", () => {
+      showDescription();
+      editDescription.focus();
+    });
+
+    function addTodo(args) {
+      const result = createTodo(args, nextId);
+      if (result.ok) {
+        nextId += 1;
+        todos.unshift(result.todo);
+        renderTodos();
+      }
+      return result;
+    }
+
+    function addMessage(text, sender, execution) {
+      const message = element("div", "", `message ${sender}`);
+      message.append(element("p", text));
+      if (execution) {
+        const details = document.createElement("details");
+        const summary = element("summary", "実行詳細 · ");
+        summary.append(element("code", "create_todo"));
+        const comparison = element("div", "", "comparison");
+        for (const [label, value] of [["渡した引数", execution.args], ["アプリの実行結果", execution.result]]) {
+          const column = document.createElement("div");
+          column.append(element("h3", label), element("pre", JSON.stringify(value, null, 2)));
+          comparison.append(column);
+        }
+        details.append(summary, comparison);
+        message.append(details);
+        details.addEventListener("toggle", () => {
+          if (details.open) {
+            messages.scrollTop += details.getBoundingClientRect().top - messages.getBoundingClientRect().top - 8;
+          }
+        });
+      }
+      messages.append(message);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    document.querySelector("#open-create").addEventListener("click", () => createDialog.showModal());
+    document.querySelector("#cancel-create").addEventListener("click", () => createDialog.close());
+    createDialog.addEventListener("close", () => {
+      todoForm.reset();
+      titleInput.setCustomValidity("");
+    });
+
+    todoForm.addEventListener("submit", event => {
+      event.preventDefault();
+      feedback.textContent = "";
+      const result = addTodo(Object.fromEntries(new FormData(todoForm)));
+      if (result.ok) {
+        createDialog.close();
+        feedback.textContent = `「${result.todo.title}」を追加しました。`;
+      } else {
+        titleInput.setCustomValidity(result.error);
+        titleInput.reportValidity();
+      }
+    });
+    titleInput.addEventListener("input", () => titleInput.setCustomValidity(""));
+
+    for (const button of chatForm.querySelectorAll("[data-example]")) {
+      button.addEventListener("click", () => {
+        requestInput.value = button.dataset.example;
+        requestInput.focus();
+      });
+    }
+
+    chatForm.addEventListener("submit", event => {
+      event.preventDefault();
+      const request = requestInput.value.trim();
+      if (!request) return;
+      requestInput.value = "";
+      addMessage(request, "user");
+      const interpretation = interpretRequest(request, awaitingTitle);
+      awaitingTitle = interpretation.awaitingTitle ?? false;
+      if (interpretation.question) {
+        addMessage(interpretation.question, "assistant");
+        return;
+      }
+
+      const { args } = interpretation;
+      const result = addTodo(args);
+      const reply = result.ok ? `「${result.todo.title}」を追加しました。` : result.error;
+      addMessage(reply, "assistant", { args, result });
+    });
+
+    renderTodos();
+  </script>
+</body>
+</html>
