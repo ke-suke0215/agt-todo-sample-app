@@ -1,0 +1,36 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "files": {
+    "includes": [
+      "src/**",
+      "e2e/**",
+      "*.config.ts",
+      "biome.json",
+      "index.html",
+      "package.json",
+      "tsconfig.json",
+      ".github/workflows/*.yml"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "linter": {
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  }
+}

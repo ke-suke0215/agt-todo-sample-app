@@ -16,7 +16,10 @@ test('Todo作成後、データベースを開き直しても一覧に残る', a
       const response = await createApp(first).request('/api/todos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: '歯医者を予約する', details: '金曜日\n午後' }),
+        body: JSON.stringify({
+          title: '歯医者を予約する',
+          details: '金曜日\n午後',
+        }),
       });
       assert.equal(response.status, 201);
       saved = await response.json();

@@ -18,11 +18,13 @@ npm run dev
 ## 確認
 
 ```sh
-npm run typecheck
+npm run check
 npm test
 npx playwright install chromium
 npm run test:e2e
 ```
+
+Biomeは `npm run lint` でリンティング、`npm run format` で整形、`npm run format:check` で整形の確認ができます。`npm run check` はリンティング・整形・import順・TypeScriptの型をまとめて確認します。GitHub Actionsは `main` へのプルリクエストとpushで、上記のチェックとテストを実行します。
 
 Playwrightではブラウザーから実際のSQLiteとHonoを使います。チャットのテストはOpenAI APIを代替するローカルサーバーへ接続するので、APIキーは不要です。
 

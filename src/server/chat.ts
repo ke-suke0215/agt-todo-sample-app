@@ -1,11 +1,21 @@
 import {
-  Agent, OpenAIProvider, Runner, setSensitiveDataLoggingEnabled, setTracingDisabled, tool,
+  Agent,
+  OpenAIProvider,
+  Runner,
+  setSensitiveDataLoggingEnabled,
+  setTracingDisabled,
+  tool,
 } from '@openai/agents';
 import type OpenAI from 'openai';
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses';
 import { z } from 'zod';
+import type {
+  ChatEvent,
+  ChatInput,
+  ChatItem,
+  ToolResult,
+} from '../contracts.ts';
 import { todoFields, todoInput, toolResultSchema } from '../contracts.ts';
-import type { ChatEvent, ChatInput, ChatItem, ToolResult } from '../contracts.ts';
 import type { Store } from './store.ts';
 
 const jsonSchema = z.json();
@@ -20,8 +30,12 @@ function parseJson(text: string): z.infer<typeof jsonSchema> {
 }
 
 function readToolResult(output: unknown): ToolResult {
-  const result = toolResultSchema.safeParse(typeof output === 'string' ? parseJson(output) : output);
-  return result.success ? result.data : { ok: false, message: 'Todoを追加できませんでした。' };
+  const result = toolResultSchema.safeParse(
+    typeof output === 'string' ? parseJson(output) : output,
+  );
+  return result.success
+    ? result.data
+    : { ok: false, message: 'Todoを追加できませんでした。' };
 }
 
 export function createChat(store: Store, client: OpenAI) {
@@ -43,9 +57,12 @@ export function createChat(store: Store, client: OpenAI) {
     }),
     execute: (args): ToolResult => {
       const input = todoInput.safeParse({
-        title: args.title, details: args.details ?? undefined, status: args.status ?? undefined,
+        title: args.title,
+        details: args.details ?? undefined,
+        status: args.status ?? undefined,
       });
-      if (!input.success) return { ok: false, message: 'Todoの入力値が無効です。' };
+      if (!input.success)
+        return { ok: false, message: 'Todoの入力値が無効です。' };
       try {
         return { ok: true, todo: store.createTodo(input.data) };
       } catch {
@@ -62,16 +79,30 @@ export function createChat(store: Store, client: OpenAI) {
     async history(id: string): Promise<ChatItem[]> {
       const items: ChatItem[] = [];
       const tools = new Map<string, Extract<ChatItem, { kind: 'tool' }>>();
-      for await (const item of client.conversations.items.list(id, { order: 'asc', limit: 100 })) {
-        if (item.type === 'message' && (item.role === 'user' || item.role === 'assistant')) {
-          const text = item.content.flatMap((part) => {
-            if (part.type === 'input_text' || part.type === 'output_text') return [part.text];
-            if (part.type === 'refusal') return [part.refusal];
-            return [];
-          }).join('\n');
+      for await (const item of client.conversations.items.list(id, {
+        order: 'asc',
+        limit: 100,
+      })) {
+        if (
+          item.type === 'message' &&
+          (item.role === 'user' || item.role === 'assistant')
+        ) {
+          const text = item.content
+            .flatMap((part) => {
+              if (part.type === 'input_text' || part.type === 'output_text')
+                return [part.text];
+              if (part.type === 'refusal') return [part.refusal];
+              return [];
+            })
+            .join('\n');
           if (text) items.push({ kind: item.role, id: item.id, text });
         } else if (item.type === 'function_call') {
-          const entry = { kind: 'tool', id: item.call_id, name: item.name, args: parseJson(item.arguments) } as const;
+          const entry = {
+            kind: 'tool',
+            id: item.call_id,
+            name: item.name,
+            args: parseJson(item.arguments),
+          } as const;
           tools.set(entry.id, entry);
           items.push(entry);
         } else if (item.type === 'function_call_output' && item.call_id) {
@@ -84,7 +115,11 @@ export function createChat(store: Store, client: OpenAI) {
       }
       return items;
     },
-    async *run(input: ChatInput, conversationId: string, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+    async *run(
+      input: ChatInput,
+      conversationId: string,
+      signal: AbortSignal,
+    ): AsyncGenerator<ChatEvent> {
       const agent = new Agent({
         name: 'Todoアシスタント',
         model: 'gpt-6-luna',
@@ -95,26 +130,54 @@ create_todo を呼ぶ。不明な場合は先に質問する。詳細やステ�
         tools: [createTodo],
         modelSettings: {
           parallelToolCalls: false,
-          reasoning: { effort: input.effort, ...(input.effort === 'none' ? {} : { summary: 'auto' }) },
+          reasoning: {
+            effort: input.effort,
+            ...(input.effort === 'none' ? {} : { summary: 'auto' }),
+          },
         },
       });
 
-      const run = await runner.run(agent, input.text, { conversationId, stream: true, signal });
+      const run = await runner.run(agent, input.text, {
+        conversationId,
+        stream: true,
+        signal,
+      });
       for await (const event of run) {
-        if (event.type === 'raw_model_stream_event' && event.data.type === 'model') {
+        if (
+          event.type === 'raw_model_stream_event' &&
+          event.data.type === 'model'
+        ) {
           const raw = event.data.event as ResponseStreamEvent;
-          if (raw.type === 'response.output_text.delta' || raw.type === 'response.refusal.delta') {
+          if (
+            raw.type === 'response.output_text.delta' ||
+            raw.type === 'response.refusal.delta'
+          ) {
             yield { type: 'text', id: raw.item_id, delta: raw.delta };
           } else if (raw.type === 'response.reasoning_summary_text.delta') {
             yield { type: 'reasoning', id: raw.item_id, delta: raw.delta };
           }
         } else if (event.type === 'run_item_stream_event') {
           const item = event.item;
-          if (item.type === 'tool_call_item' && item.rawItem.type === 'function_call') {
+          if (
+            item.type === 'tool_call_item' &&
+            item.rawItem.type === 'function_call'
+          ) {
             const call = item.rawItem;
-            yield { type: 'tool_start', id: call.callId, name: call.name, args: parseJson(call.arguments) };
-          } else if (item.type === 'tool_call_output_item' && item.rawItem.type === 'function_call_result') {
-            yield { type: 'tool_result', id: item.rawItem.callId, result: readToolResult(item.output) };
+            yield {
+              type: 'tool_start',
+              id: call.callId,
+              name: call.name,
+              args: parseJson(call.arguments),
+            };
+          } else if (
+            item.type === 'tool_call_output_item' &&
+            item.rawItem.type === 'function_call_result'
+          ) {
+            yield {
+              type: 'tool_result',
+              id: item.rawItem.callId,
+              result: readToolResult(item.output),
+            };
           }
         }
       }

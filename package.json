@@ -14,7 +14,11 @@
     "start": "node --env-file-if-exists=.env src/server/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test e2e/api.test.ts",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "lint": "biome lint --error-on-warnings .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "biome ci --error-on-warnings . && npm run typecheck"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.11",
@@ -28,6 +32,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
