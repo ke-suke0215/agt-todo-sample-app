@@ -36,10 +36,11 @@ export function chatRoutes(store: Store, chat?: Chat) {
     }
     if (existingId) activeConversations.add(existingId);
 
-    return streamSSE(context, async (stream) => {
-      const signal = new AbortController();
-      stream.onAbort(() => signal.abort());
-      const write = (event: ChatEvent) => stream.writeSSE({ data: JSON.stringify(event) });
+    const response = streamSSE(context, async (stream) => {
+      const signal = AbortSignal.timeout(180_000);
+      async function write(event: ChatEvent) {
+        if (!stream.aborted && !stream.closed) await stream.writeSSE({ data: JSON.stringify(event) });
+      }
       const names = new Map<string, string>();
       const started = performance.now();
       let id = existingId;
@@ -47,12 +48,13 @@ export function chatRoutes(store: Store, chat?: Chat) {
       try {
         await write({ type: 'waiting' });
         if (stream.aborted) return;
-        id ??= await chat.createConversation();
+        id ??= await chat.createConversation(signal);
         activeConversations.add(id);
         store.touchConversation(id);
         await write({ type: 'conversation', id });
 
-        for await (const event of chat.run(input, id, signal.signal)) {
+        // A disconnected browser can reload the conversation after OpenAI records the result.
+        for await (const event of chat.run(input, id, signal)) {
           if (event.type === 'tool_start') names.set(event.id, event.name);
           if (event.type === 'tool_result') {
             const tool = names.get(event.id) === 'create_todo' ? 'create_todo' : 'unknown';
@@ -60,10 +62,8 @@ export function chatRoutes(store: Store, chat?: Chat) {
           }
           await write(event);
         }
-        if (!stream.aborted) {
-          await write({ type: 'done' });
-          ok = true;
-        }
+        ok = true;
+        await write({ type: 'done' });
       } catch {
         if (!stream.aborted) await write({ type: 'error', message: 'チャットの応答を完了できませんでした。' });
       } finally {
@@ -71,6 +71,8 @@ export function chatRoutes(store: Store, chat?: Chat) {
         console.info(JSON.stringify({ requestId: input.requestId, durationMs: Math.round(performance.now() - started), ok }));
       }
     });
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
   });
 
   return app;

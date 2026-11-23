@@ -52,7 +52,7 @@ TypeScript版 OpenAI Agents SDK と Conversations API を採用する。Agents S
 
 チャットへの送信はHTTP POSTで受け、同じレスポンスでサーバー送信イベント（SSE）を返す。Agents SDKのイベントを、モデルの応答待ち、ツール呼び出し、ツールの成否、返答テキストの差分、完了、エラーに対応づける。ツール呼び出しと結果は `call_id` で対応づけ、Todoが保存された時点で一覧を更新する。保存後にストリームが切れた場合は、一覧と履歴を取得し直せるようにする。同じ送信の再試行でTodoを重複作成しない。 [Agents SDKのストリーミング](https://openai.github.io/openai-agents-js/guides/streaming/)
 
-ブラウザーは会話ごとに送信を一件ずつ行う。切断時は送信を自動でやり直さず、Todo一覧とOpenAIの会話履歴を再取得する。
+ブラウザーは会話ごとに送信を一件ずつ行う。切断時は送信を自動でやり直さず、Todo一覧とOpenAIの会話履歴を再取得する。サーバーで開始済みの処理には完了までの猶予を設け、画面から一覧・履歴を読み直せるようにする。
 
 画面では「応答を待っています」「Todoを追加しています」「Todoを追加しました」など、アプリが受け取った進行状況を表示する。OpenAIから推論の要約が返る場合は、要約として折りたたみ表示できるようにする。推論レベルは送信時に適用し、操作の進捗表示には実際のツールイベントを使う。 [OpenAIの推論要約](https://developers.openai.com/api/docs/guides/reasoning#reasoning-summaries)
 

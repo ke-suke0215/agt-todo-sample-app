@@ -27,6 +27,12 @@ test('APIキーなしでTodoを作成、編集し、再起動しても確認で�
   await expect(todo).toContainText('完了');
   await page.getByRole('searchbox', { name: 'Todoを検索' }).fill('見つからない検索語');
   await expect(page.getByText('一致するTodoがありません')).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'チャットを開く' }).click();
+  await expect(page.getByRole('complementary', { name: 'Todoアシスタント' })).toBeVisible();
+  await page.getByRole('button', { name: 'チャットを閉じる' }).click();
+  await expect(page.getByRole('complementary', { name: 'Todoアシスタント' })).toBeHidden();
 });
 
 test('削除をキャンセルでき、確認して削除すると一覧から消える', async ({ page, request }) => {

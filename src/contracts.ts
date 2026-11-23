@@ -3,8 +3,10 @@ import { z } from 'zod';
 export const statuses = ['pending', 'in_progress', 'done'] as const;
 export const statusLabels = { pending: '未着手', in_progress: '進行中', done: '完了' } as const;
 
-const title = z.string().trim().min(1).max(200).regex(/^[^\r\n]+$/);
-const details = z.string().max(5000);
+export const inputLimits = { title: 200, details: 5000, message: 10000 } as const;
+
+const title = z.string().trim().min(1).max(inputLimits.title).regex(/^[^\r\n]+$/);
+const details = z.string().max(inputLimits.details);
 export const todoInput = z.object({
   title,
   details: details.default(''),
@@ -17,7 +19,7 @@ export type Todo = z.infer<typeof todoSchema>;
 
 export const efforts = ['none', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 export const chatInput = z.object({
-  text: z.string().trim().min(1).max(10000),
+  text: z.string().trim().min(1).max(inputLimits.message),
   effort: z.enum(efforts),
   requestId: z.uuid(),
   conversationId: z.string().max(150).optional(),

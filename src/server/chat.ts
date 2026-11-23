@@ -55,8 +55,8 @@ export function createChat(store: Store, client: OpenAI) {
   });
 
   return {
-    async createConversation() {
-      const { id } = await client.conversations.create({});
+    async createConversation(signal: AbortSignal) {
+      const { id } = await client.conversations.create({}, { signal });
       return id;
     },
     async history(id: string): Promise<ChatItem[]> {
@@ -107,8 +107,6 @@ create_todo を呼ぶ。不明な場合は先に質問する。詳細やステ�
             yield { type: 'text', id: raw.item_id, delta: raw.delta };
           } else if (raw.type === 'response.reasoning_summary_text.delta') {
             yield { type: 'reasoning', id: raw.item_id, delta: raw.delta };
-          } else if (raw.type === 'response.failed' || raw.type === 'response.incomplete') {
-            throw new Error('Response did not complete');
           }
         } else if (event.type === 'run_item_stream_event') {
           const item = event.item;

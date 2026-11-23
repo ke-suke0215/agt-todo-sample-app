@@ -3,7 +3,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { statusLabels, statuses, todoInput, todoSchema } from '../contracts.ts';
+import { inputLimits, statusLabels, statuses, todoInput, todoSchema } from '../contracts.ts';
 import type { Todo, TodoInput } from '../contracts.ts';
 import { errorMessage, getJson, jsonBody, requireOk } from './api.ts';
 
@@ -24,7 +24,7 @@ export function TodoBoard({ todos, loading, loadError, refresh }: {
   return (
     <section className="todo-board" aria-labelledby="todos-heading">
       <header className="board-header">
-        <div className="board-title"><h1 id="todos-heading">マイタスク</h1><p>やることを整理して、ひとつずつ進めましょう。</p></div>
+        <div className="board-title"><h1 id="todos-heading">マイタスク</h1></div>
         <button className="button primary add-button" onClick={() => setEditor('new')}><Plus size={18} /> Todoを追加</button>
       </header>
       <div className="summary-grid">
@@ -133,8 +133,8 @@ function TodoEditor({ todo, close, refresh }: { todo?: Todo; close: () => void; 
           <button type="button" className="icon-button" aria-label="閉じる" disabled={busy} onClick={close}><X size={20} /></button>
         </header>
         <div className="editor-fields">
-          <label>タイトル<input required maxLength={200} value={fields.title} onChange={(event) => setFields({ ...fields, title: event.target.value })} /></label>
-          <label>詳細<textarea rows={4} maxLength={5000} value={fields.details} onChange={(event) => setFields({ ...fields, details: event.target.value })} /></label>
+          <label>タイトル<input required maxLength={inputLimits.title} value={fields.title} onChange={(event) => setFields({ ...fields, title: event.target.value })} /></label>
+          <label>詳細<textarea rows={4} maxLength={inputLimits.details} value={fields.details} onChange={(event) => setFields({ ...fields, details: event.target.value })} /></label>
           <label>ステータス<select value={fields.status} onChange={(event) => {
             const status = todoSchema.shape.status.parse(event.target.value);
             setFields({ ...fields, status });

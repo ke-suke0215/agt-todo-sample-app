@@ -2,18 +2,21 @@ import { Hono } from 'hono';
 import type { Chat } from './chat.ts';
 import { chatRoutes } from './chat-routes.ts';
 import { readJson } from './http.ts';
+import { isLoopbackUrl } from './local.ts';
 import { todoFields, todoInput } from '../contracts.ts';
 import type { Store } from './store.ts';
 
 export function createApp(store: Store, chat?: Chat) {
   const app = new Hono();
-  app.use('/api/*', async (context, next) => {
-    context.header('Cache-Control', 'no-store');
+  app.use('*', async (context, next) => {
     const origin = context.req.header('Origin');
-    const localOrigin = origin && URL.canParse(origin) ? new URL(origin).hostname : undefined;
-    if (origin && localOrigin !== '127.0.0.1' && localOrigin !== 'localhost' && localOrigin !== '[::1]') {
+    if (!isLoopbackUrl(context.req.url) || (origin && !isLoopbackUrl(origin))) {
       return context.json({ error: 'ローカルの画面から操作してください。' }, 403);
     }
+    await next();
+  });
+  app.use('/api/*', async (context, next) => {
+    context.header('Cache-Control', 'no-store');
     await next();
   });
 

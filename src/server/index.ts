@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { dirname, resolve } from 'node:path';
 import { createApp } from './app.ts';
 import { createChat } from './chat.ts';
+import { apiPort } from './local.ts';
 import { mountWeb } from './web.ts';
 import { openStore } from './store.ts';
 
@@ -14,7 +15,6 @@ const key = process.env.OPENAI_API_KEY?.trim();
 const app = createApp(store, key ? createChat(store, new OpenAI({ apiKey: key, logLevel: 'off' })) : undefined);
 if (existsSync('dist/index.html')) mountWeb(app);
 
-const port = Number(process.env.TODO_PORT ?? 3001);
-serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, ({ port: listenPort }) => {
+serve({ fetch: app.fetch, port: apiPort, hostname: '127.0.0.1' }, ({ port: listenPort }) => {
   console.info(`Todo server: http://127.0.0.1:${listenPort}`);
 });

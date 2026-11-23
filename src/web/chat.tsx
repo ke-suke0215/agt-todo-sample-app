@@ -4,7 +4,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { z } from 'zod';
-import { chatItemSchema, conversationSchema, efforts } from '../contracts.ts';
+import { chatItemSchema, conversationSchema, efforts, inputLimits } from '../contracts.ts';
 import type { ChatEvent, ChatInput, ChatItem, Conversation } from '../contracts.ts';
 import { errorMessage, getJson, streamChat } from './api.ts';
 
@@ -31,7 +31,17 @@ function applyEvent(items: ChatItem[], event: ChatEvent): ChatItem[] {
   return items;
 }
 
-export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> }) {
+function mergeHistory(remote: ChatItem[], live: ChatItem[]): ChatItem[] {
+  const withResult = live.filter((item) => item.kind === 'tool' && item.result);
+  const historyIds = new Set(remote.map((item) => item.id));
+  return [
+    ...remote.map((item) => item.kind === 'tool' && !item.result
+      ? withResult.find((tool) => tool.id === item.id) ?? item : item),
+    ...withResult.filter((item) => !historyIds.has(item.id)),
+  ];
+}
+
+export function ChatPanel({ onTodoChange, open }: { onTodoChange: () => Promise<void>; open: boolean }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [items, setItems] = useState<ChatItem[]>([]);
   const [history, setHistory] = useState<Conversation[]>([]);
@@ -42,6 +52,7 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState('');
   const [error, setError] = useState('');
+  const [canRecover, setCanRecover] = useState(false);
   const transcript = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const follow = useRef(true);
@@ -89,6 +100,7 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
       const restored = await getHistory(id);
       follow.current = true;
       setConversationId(id);
+      setCanRecover(false);
       setItems(restored);
       setText('');
     } catch (error) {
@@ -101,6 +113,7 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
 
   function newChat() {
     setConversationId(undefined);
+    setCanRecover(false);
     setItems([]);
     setText('');
     setError('');
@@ -118,6 +131,7 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
     setBusy(true);
     setShowHistory(false);
     setError('');
+    setCanRecover(false);
     setActivity('モデルの応答を待っています…');
     setItems((previous) => [...previous, { kind: 'user', id: requestId, text: message }]);
     setText('');
@@ -139,17 +153,22 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
       });
     } catch (error) {
       setError(errorMessage(error, 'チャットの応答を完了できませんでした。'));
-      await Promise.allSettled([
-        onTodoChange(),
-        listHistory(),
-        currentId ? getHistory(currentId).then((restored) => {
-          if (restored.length) setItems(restored);
-        }) : undefined,
-      ]);
+      setCanRecover(true);
+      await recover(currentId);
     } finally {
       setActivity('');
       setBusy(false);
     }
+  }
+
+  async function recover(id: string | undefined) {
+    await Promise.allSettled([
+      onTodoChange(),
+      listHistory(),
+      id ? getHistory(id).then((restored) => {
+        if (restored.length) setItems((live) => mergeHistory(restored, live));
+      }) : undefined,
+    ]);
   }
 
   function keyboardSend(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -160,7 +179,7 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
   }
 
   return (
-    <aside className="chat-panel" aria-labelledby="chat-heading">
+    <aside id="chat-panel" className={open ? 'chat-panel mobile-open' : 'chat-panel'} aria-labelledby="chat-heading">
       <header className="chat-header">
         <span className="chat-icon"><Sparkles size={19} /></span>
         <div><h2 id="chat-heading">Todoアシスタント</h2><span className="model-name">GPT-6 Luna</span></div>
@@ -193,7 +212,6 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
           <div className="chat-empty">
             <span className="empty-sparkle"><Sparkles size={27} strokeWidth={1.6} /></span>
             <h3>チャットでTodoを追加</h3>
-            <p>やることを、普段の言葉で伝えてください。</p>
             <button className="suggestion" disabled={!enabled || busy} onClick={() => {
               setText(suggestion);
               composer.current?.focus();
@@ -202,12 +220,23 @@ export function ChatPanel({ onTodoChange }: { onTodoChange: () => Promise<void> 
         )}
       </div>
       {activity && <p className="activity" role="status"><LoaderCircle size={15} />{activity}</p>}
-      {error && <p className="chat-error" role="alert"><CircleAlert size={16} />{error}</p>}
+      {error && <div className="chat-error">
+        <p role="alert"><CircleAlert size={16} /> {error}</p>
+        {canRecover && <button className="text-button" disabled={busy} onClick={async () => {
+          setBusy(true);
+          try {
+            await recover(conversationId);
+            if (!conversationId) setShowHistory(true);
+          } finally {
+            setBusy(false);
+          }
+        }}>一覧と履歴を再読み込み</button>}
+      </div>}
       <form className="composer" onSubmit={send}>
         {enabled === false && <p className="key-notice"><KeyRound size={15} />チャットを使うには OpenAI APIキーを設定してください。</p>}
         <div className="composer-box">
           <textarea ref={composer} value={text} onChange={(event) => setText(event.target.value)}
-            maxLength={10000} rows={2} disabled={!enabled || busy} onKeyDown={keyboardSend}
+            maxLength={inputLimits.message} rows={2} disabled={!enabled || busy} onKeyDown={keyboardSend}
             aria-label="メッセージ" placeholder="Todoの追加を頼む…" />
           <div className="composer-actions">
             <label className="effort">推論レベル<select value={effort} disabled={!enabled || busy}
