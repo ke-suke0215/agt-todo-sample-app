@@ -20,6 +20,43 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
     }),
   );
 
+  let rejectDecision = false;
+  upstream.post('/v1/decisions', async (context) => {
+    const { model, input, questions } = await context.req.json<{
+      model: string;
+      input: {
+        content: {
+          data: {
+            query: string;
+            candidates: { key: string; title: string; details: string }[];
+          };
+        }[];
+      }[];
+      questions: { type: string; name: string }[];
+    }>();
+    expect(model).toBe('gpt-6-luna');
+    const { query, candidates } = input[1].content[0].data;
+    expect(query).toBe('本を読む活動');
+    expect(candidates.map(({ title }) => title)).toEqual([
+      '本棚を片付ける',
+      '読書',
+      '技術書読む',
+      '牛乳を買う',
+    ]);
+    expect(questions).toMatchObject(
+      candidates.map(({ key }) => ({ type: 'predicate', name: key })),
+    );
+    if (rejectDecision) return context.json({ error: 'unavailable' }, 503);
+    return context.json({
+      answers: candidates.toReversed().map(({ key, title }) => ({
+        type: 'predicate',
+        name: key,
+        probability:
+          title === '読書' ? 0.99 : title === '技術書読む' ? 0.9 : 0.2,
+      })),
+    });
+  });
+
   let targetId = '';
   upstream.post('/v1/responses', async (context) => {
     const input = await context.req.json<{
@@ -31,6 +68,7 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
     expect(input.tools.map(({ name }) => name)).toEqual([
       'create_todo',
       'search_todos',
+      'search_todos_by_meaning',
       'get_todo',
       'update_todo',
       'delete_todo',
@@ -123,9 +161,10 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
         item = deleteCall();
         break;
       case 12:
-        item = call('search_todos', {
-          keyword: ['読む', '読書', '読了', '技術書'],
-          statuses: null,
+      case 14:
+        item = call('search_todos_by_meaning', {
+          query: '本を読む活動',
+          statuses: ['pending', 'done'],
         });
         break;
       case 13:
@@ -138,6 +177,27 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
           ],
         });
         item = reply('「読書」と「技術書読む」があります。');
+        break;
+      case 15:
+        expect(result).toEqual({
+          ok: false,
+          message: '意味での検索を完了できませんでした。',
+        });
+        item = call('search_todos', {
+          keyword: ['読む', '読書', '読了', '技術書'],
+          statuses: null,
+        });
+        break;
+      case 16:
+        expect(result).toMatchObject({
+          ok: true,
+          total: 2,
+          matches: [
+            { title: '読書', status: 'done' },
+            { title: '技術書読む', status: 'pending' },
+          ],
+        });
+        item = reply('キーワード検索では「読書」と「技術書読む」があります。');
         break;
       default:
         expect(result).toMatchObject({
@@ -269,5 +329,13 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
   await send(
     '本を読む系のタスクなにがある？',
     '「読書」と「技術書読む」があります。',
+  );
+  await expect(
+    page.locator('summary').filter({ hasText: '意味でTodoを検索' }),
+  ).toContainText('成功');
+  rejectDecision = true;
+  await send(
+    'もう一度、本を読む系のタスクを探して',
+    'キーワード検索では「読書」と「技術書読む」があります。',
   );
 });

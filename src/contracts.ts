@@ -74,6 +74,7 @@ export type Conversation = z.infer<typeof conversationSchema>;
 export const todoToolLabels = {
   create_todo: 'Todoを追加',
   search_todos: 'Todoを検索',
+  search_todos_by_meaning: '意味でTodoを検索',
   get_todo: 'Todoの詳細を取得',
   update_todo: 'Todoを更新',
   delete_todo: 'Todoの削除を確認',
@@ -81,6 +82,7 @@ export const todoToolLabels = {
 export const todoToolNameSchema = z.enum([
   'create_todo',
   'search_todos',
+  'search_todos_by_meaning',
   'get_todo',
   'update_todo',
   'delete_todo',
