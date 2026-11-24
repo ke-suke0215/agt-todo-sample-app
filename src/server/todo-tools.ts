@@ -1,4 +1,5 @@
 import { tool } from '@openai/agents';
+import type OpenAI from 'openai';
 import { z } from 'zod';
 import type { ToolResult } from '../contracts.ts';
 import {
@@ -9,6 +10,7 @@ import {
   todoSchema,
   todoSummarySchema,
 } from '../contracts.ts';
+import { searchByMeaning } from './meaning-search.ts';
 import type { Store } from './store.ts';
 
 const status = todoFields.shape.status;
@@ -16,6 +18,8 @@ const missing: ToolResult = { ok: false, message: 'Todoが見つかりません�
 
 export function todoTools(
   store: Store,
+  client: OpenAI,
+  signal: AbortSignal,
   requestDelete: (todo: NonNullable<ReturnType<Store['getTodo']>>) => string,
 ) {
   return [
@@ -72,6 +76,26 @@ export function todoTools(
             .map((todo) => todoSummarySchema.parse(todo)),
           total: matches.length,
         };
+      },
+    }),
+    tool({
+      name: 'search_todos_by_meaning',
+      description:
+        'テーマや活動を表す検索条件で、Todoのタイトルと詳細の冒頭を意味で判定する。関連度順で最大20件と全一致件数を返す。ステータスの指定がなければnull。読み取り専用のカテゴリ検索に使う。',
+      parameters: z.object({
+        query: z.string(),
+        statuses: z.array(status).nullable(),
+      }),
+      execute: async ({ query, statuses }): Promise<ToolResult> => {
+        const topic = query.trim();
+        if (!topic || topic.length > inputLimits.message)
+          return { ok: false, message: '意味で探す条件を確認してください。' };
+        const candidates = store
+          .listTodos()
+          .filter(
+            (todo) => !statuses?.length || statuses.includes(todo.status),
+          );
+        return searchByMeaning(client, topic, candidates, signal);
       },
     }),
     tool({
