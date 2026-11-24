@@ -1,7 +1,11 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import type { ChatEvent } from '../contracts.ts';
-import { chatInput } from '../contracts.ts';
+import {
+  chatInput,
+  deleteDecisionSchema,
+  todoToolNameSchema,
+} from '../contracts.ts';
 import type { Chat } from './chat.ts';
 import { readJson } from './http.ts';
 import type { Store } from './store.ts';
@@ -22,6 +26,26 @@ export function chatRoutes(store: Store, chat?: Chat) {
       return context.json({ error: '会話が見つかりません。' }, 404);
     return context.json(await chat.history(id));
   });
+  app.post(
+    '/conversations/:id/delete-approvals/:approvalId',
+    async (context) => {
+      if (!chat)
+        return context.json(
+          { error: 'OpenAI APIキーを設定してください。' },
+          503,
+        );
+      const { id, approvalId } = context.req.param();
+      if (!store.hasConversation(id))
+        return context.json({ error: '会話が見つかりません。' }, 404);
+      const input = deleteDecisionSchema.safeParse(await readJson(context));
+      if (!input.success)
+        return context.json(
+          { error: '削除の確認内容を確認してください。' },
+          400,
+        );
+      return context.json(chat.decideDeletion(id, approvalId, input.data));
+    },
+  );
 
   app.post('/', async (context) => {
     if (!chat)
@@ -73,12 +97,11 @@ export function chatRoutes(store: Store, chat?: Chat) {
         for await (const event of chat.run(input, id, signal)) {
           if (event.type === 'tool_start') names.set(event.id, event.name);
           if (event.type === 'tool_result') {
-            const tool =
-              names.get(event.id) === 'create_todo' ? 'create_todo' : 'unknown';
+            const parsed = todoToolNameSchema.safeParse(names.get(event.id));
             console.info(
               JSON.stringify({
                 requestId: input.requestId,
-                tool,
+                tool: parsed.success ? parsed.data : 'unknown',
                 ok: event.result.ok,
               }),
             );

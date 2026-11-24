@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createApp } from '../src/server/app.ts';
+import { createDeleteApprovals } from '../src/server/delete-approvals.ts';
 import { openStore } from '../src/server/store.ts';
 
 test('Todo作成後、データベースを開き直しても一覧に残る', async () => {
@@ -39,4 +40,38 @@ test('APIキーなしでもTodoを使え、チャットは設定が必要と案�
   const status = await app.request('/api/chat/status');
   assert.deepEqual(await status.json(), { enabled: false });
   assert.equal((await app.request('/api/todos')).status, 200);
+});
+
+test('チャットの削除承認は対象の版と会話に紐づき、一度だけ削除する', () => {
+  using store = openStore(':memory:');
+  const todo = store.createTodo({
+    title: '牛乳',
+    details: '駅前',
+    status: 'pending',
+  });
+  const original = store.getTodo(todo.id);
+  assert.ok(original);
+  const approvals = createDeleteApprovals(store);
+  const id = approvals.request('conv_owner', original);
+  const first = { decision: 'approve', revision: original.revision } as const;
+
+  assert.deepEqual(approvals.decide('conv_other', id, first), {
+    state: 'expired',
+  });
+  assert.ok(store.getTodo(todo.id));
+  store.updateTodo(todo.id, { status: 'in_progress' });
+  const refreshed = approvals.decide('conv_owner', id, first);
+  assert.equal(refreshed.state, 'changed');
+  assert.ok('todo' in refreshed);
+  assert.deepEqual(refreshed.todo, { ...todo, status: 'in_progress' });
+  assert.deepEqual(approvals.decide('conv_owner', id, first), refreshed);
+
+  const second = { decision: 'approve', revision: refreshed.revision } as const;
+  assert.deepEqual(approvals.decide('conv_owner', id, second), {
+    state: 'deleted',
+  });
+  assert.deepEqual(approvals.decide('conv_owner', id, second), {
+    state: 'deleted',
+  });
+  assert.equal(store.getTodo(todo.id), undefined);
 });

@@ -19,14 +19,20 @@ import type {
   ChatInput,
   ChatItem,
   Conversation,
+  DeleteApproval,
 } from '../contracts.ts';
 import {
   chatItemSchema,
   conversationSchema,
+  deleteApprovalSchema,
+  type deleteDecisionSchema,
   efforts,
   inputLimits,
+  statusLabels,
+  todoToolLabels,
+  todoToolNameSchema,
 } from '../contracts.ts';
-import { errorMessage, getJson, streamChat } from './api.ts';
+import { errorMessage, getJson, jsonBody, streamChat } from './api.ts';
 
 const suggestion = '「週末の買い物」をTodoに追加して';
 const date = new Intl.DateTimeFormat('ja-JP', {
@@ -63,7 +69,7 @@ function applyEvent(items: ChatItem[], event: ChatEvent): ChatItem[] {
   if (event.type === 'tool_result') {
     return items.map((item) =>
       item.kind === 'tool' && item.id === event.id
-        ? { ...item, result: event.result }
+        ? { ...item, result: event.result, approval: event.approval }
         : item,
     );
   }
@@ -183,6 +189,7 @@ export function ChatPanel({
     const message = text.trim();
     if (busy || !enabled || !message) return;
     const requestId = crypto.randomUUID();
+    const names = new Map<string, string>();
     let currentId = conversationId;
     follow.current = true;
     setBusy(true);
@@ -204,14 +211,15 @@ export function ChatPanel({
             currentId = event.id;
             setConversationId(event.id);
           } else if (event.type === 'tool_start') {
-            setActivity(
-              event.name === 'create_todo'
-                ? 'Todoを追加しています…'
-                : 'ツールを実行しています…',
-            );
+            names.set(event.id, event.name);
+            setActivity(`${toolLabel(event.name)}しています…`);
           } else if (event.type === 'tool_result') {
             setActivity('モデルの応答を待っています…');
-            if (event.result.ok) void onTodoChange();
+            if (event.result.ok && 'todo' in event.result && !event.approval) {
+              const tool = names.get(event.id);
+              if (tool === 'create_todo' || tool === 'update_todo')
+                void onTodoChange();
+            }
           } else if (event.type === 'text') {
             setActivity('返答を受信しています…');
           }
@@ -226,6 +234,27 @@ export function ChatPanel({
       setActivity('');
       setBusy(false);
     }
+  }
+
+  async function decideDeletion(
+    itemId: string,
+    approvalId: string,
+    decision: z.infer<typeof deleteDecisionSchema>,
+  ) {
+    const approval = await getJson(
+      `/api/chat/conversations/${encodeURIComponent(conversationId ?? '')}/delete-approvals/${approvalId}`,
+      deleteApprovalSchema,
+      { method: 'POST', ...jsonBody(decision) },
+    );
+    setItems((previous) =>
+      previous.map((item) =>
+        item.kind === 'tool' && item.id === itemId
+          ? { ...item, approval }
+          : item,
+      ),
+    );
+    if (approval.state === 'deleted' || approval.state === 'missing')
+      void onTodoChange();
   }
 
   async function recover(id: string | undefined) {
@@ -323,7 +352,12 @@ export function ChatPanel({
         {items.length ? (
           <ol aria-label="会話" className="messages">
             {items.map((item) => (
-              <Message key={item.id} item={item} busy={busy} />
+              <Message
+                key={item.id}
+                item={item}
+                busy={busy}
+                onDelete={decideDeletion}
+              />
             ))}
           </ol>
         ) : (
@@ -331,7 +365,7 @@ export function ChatPanel({
             <span className="empty-sparkle">
               <Sparkles size={27} strokeWidth={1.6} />
             </span>
-            <h3>チャットでTodoを追加</h3>
+            <h3>チャットでTodoを管理</h3>
             <button
               type="button"
               className="suggestion"
@@ -394,7 +428,7 @@ export function ChatPanel({
             disabled={!enabled || busy}
             onKeyDown={keyboardSend}
             aria-label="メッセージ"
-            placeholder="Todoの追加を頼む…"
+            placeholder="Todoの検索や変更を頼む…"
           />
           <div className="composer-actions">
             <label className="effort">
@@ -428,12 +462,33 @@ export function ChatPanel({
   );
 }
 
-function Message({ item, busy }: { item: ChatItem; busy: boolean }) {
+function toolLabel(name: string) {
+  const parsed = todoToolNameSchema.safeParse(name);
+  return parsed.success ? todoToolLabels[parsed.data] : 'ツールを実行';
+}
+
+type DecideDeletion = (
+  itemId: string,
+  approvalId: string,
+  decision: z.infer<typeof deleteDecisionSchema>,
+) => Promise<void>;
+
+function Message({
+  item,
+  busy,
+  onDelete,
+}: {
+  item: ChatItem;
+  busy: boolean;
+  onDelete: DecideDeletion;
+}) {
   if (item.kind === 'tool') {
-    const label = item.name === 'create_todo' ? 'Todoを追加' : item.name;
+    const label = toolLabel(item.name);
     const result = item.result
       ? item.result.ok
-        ? '成功'
+        ? item.approval
+          ? '確認を表示'
+          : '成功'
         : '失敗'
       : busy
         ? '実行中'
@@ -457,7 +512,9 @@ function Message({ item, busy }: { item: ChatItem; busy: boolean }) {
                 <strong>実行結果</strong>
                 <pre>
                   {JSON.stringify(
-                    item.result.ok ? item.result.todo : item.result,
+                    item.result.ok && 'todo' in item.result
+                      ? item.result.todo
+                      : item.result,
                     null,
                     2,
                   )}
@@ -466,6 +523,15 @@ function Message({ item, busy }: { item: ChatItem; busy: boolean }) {
             )}
           </div>
         </details>
+        {item.approval && (
+          <DeleteConfirmation
+            approval={item.approval}
+            busy={busy}
+            onDecide={(approvalId, decision) =>
+              onDelete(item.id, approvalId, decision)
+            }
+          />
+        )}
       </li>
     );
   }
@@ -490,5 +556,85 @@ function Message({ item, busy }: { item: ChatItem; busy: boolean }) {
     >
       {item.text}
     </li>
+  );
+}
+
+const approvalMessages = {
+  deleted: 'Todoを削除しました。',
+  cancelled: '削除を取り消しました。',
+  missing: '対象のTodoが見つかりません。',
+  expired:
+    'この削除確認は終了しました。必要なら一覧を確認し、もう一度依頼してください。',
+} as const;
+
+function DeleteConfirmation({
+  approval,
+  busy,
+  onDecide,
+}: {
+  approval: DeleteApproval;
+  busy: boolean;
+  onDecide: (
+    id: string,
+    decision: z.infer<typeof deleteDecisionSchema>,
+  ) => Promise<void>;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  async function decide(
+    id: string,
+    decision: z.infer<typeof deleteDecisionSchema>,
+  ) {
+    setSubmitting(true);
+    setError('');
+    try {
+      await onDecide(id, decision);
+    } catch (error) {
+      setError(errorMessage(error, '削除確認を処理できませんでした。'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  if (!('todo' in approval))
+    return (
+      <p className="delete-confirmation" role="status">
+        {approvalMessages[approval.state]}
+      </p>
+    );
+  return (
+    <section className="delete-confirmation" aria-label="Todoの削除確認">
+      <p role="status">
+        {approval.state === 'changed'
+          ? 'Todoが変更されました。最新の内容を確認してください。'
+          : 'このTodoを削除しますか？'}
+      </p>
+      <strong>{approval.todo.title}</strong>
+      <p>{statusLabels[approval.todo.status]}</p>
+      {approval.todo.details && <p>{approval.todo.details}</p>}
+      {error && <p role="alert">{error}</p>}
+      <div className="delete-confirmation-actions">
+        <button
+          type="button"
+          className="button secondary"
+          disabled={busy || submitting}
+          onClick={() => void decide(approval.id, { decision: 'cancel' })}
+        >
+          キャンセル
+        </button>
+        <button
+          type="button"
+          className="button danger"
+          disabled={busy || submitting}
+          onClick={() =>
+            void decide(approval.id, {
+              decision: 'approve',
+              revision: approval.revision,
+            })
+          }
+        >
+          削除する
+        </button>
+      </div>
+    </section>
   );
 }
