@@ -6,6 +6,7 @@ import {
   setTracingDisabled,
 } from '@openai/agents';
 import type OpenAI from 'openai';
+import type { Message } from 'openai/resources/conversations/conversations';
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses';
 import { z } from 'zod';
 import type {
@@ -20,6 +21,19 @@ import type { Store } from './store.ts';
 import { todoTools } from './todo-tools.ts';
 
 const jsonSchema = z.json();
+const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
+const titleLength = 40;
+
+function messageText(item: Message) {
+  return item.content
+    .flatMap((part) => {
+      if (part.type === 'input_text' || part.type === 'output_text')
+        return [part.text];
+      if (part.type === 'refusal') return [part.refusal];
+      return [];
+    })
+    .join('\n');
+}
 
 function parseJson(text: string): z.infer<typeof jsonSchema> {
   try {
@@ -56,6 +70,24 @@ export function createChat(store: Store, client: OpenAI) {
       const { id } = await client.conversations.create({}, { signal });
       return id;
     },
+    async title(id: string, signal: AbortSignal) {
+      for await (const item of client.conversations.items.list(
+        id,
+        { order: 'asc', limit: 1 },
+        { signal, maxRetries: 0 },
+      )) {
+        if (item.type !== 'message' || item.role !== 'user') continue;
+        const line = messageText(item)
+          .trim()
+          .split(/\r?\n|\r/u, 1)[0]
+          ?.trim();
+        if (!line) continue;
+        const segments = Array.from(segmenter.segment(line));
+        const cutoff = segments[titleLength];
+        return cutoff ? `${line.slice(0, cutoff.index)}…` : line;
+      }
+      return null;
+    },
     async history(id: string): Promise<ChatItem[]> {
       const items: ChatItem[] = [];
       const tools = new Map<string, Extract<ChatItem, { kind: 'tool' }>>();
@@ -67,14 +99,7 @@ export function createChat(store: Store, client: OpenAI) {
           item.type === 'message' &&
           (item.role === 'user' || item.role === 'assistant')
         ) {
-          const text = item.content
-            .flatMap((part) => {
-              if (part.type === 'input_text' || part.type === 'output_text')
-                return [part.text];
-              if (part.type === 'refusal') return [part.refusal];
-              return [];
-            })
-            .join('\n');
+          const text = messageText(item);
           if (text) items.push({ kind: item.role, id: item.id, text });
         } else if (item.type === 'function_call') {
           const entry = {
@@ -111,6 +136,7 @@ export function createChat(store: Store, client: OpenAI) {
         instructions: `日本語で簡潔に答える。具体的なタイトルの作成依頼だけ create_todo を呼ぶ。不明なら質問する。
 詳細やステータスの指定がなければ null を渡す。複数の明確な作成依頼には1件ずつ対応する。
 タイトルや内容で指定された検索・確認・更新・削除は search_todos で対象を探す。検索語はタイトルや詳細に含まれそうな短いキーワードにする。
+「〜系」「〜に関するタスク」のようにカテゴリを聞かれたら、同じ活動を表す動詞や名詞、言い換えを考えて keyword に配列でまとめて渡す。たとえば「本を読む系」なら ["読む", "読書", "読了"]。検索結果から質問に合う候補を選んで答える。特定のTodoを名前で指定されたときは、その名前に沿って探す。
 「未完了」は pending と in_progress の両方を指定する。検索結果が0件なら見つからなかったと伝える。
 ユーザーが1件を指定したのに該当候補が複数ならタイトル・ステータスなどを示して聞き返し、更新・削除は実行しない。
 候補のタイトルとステータスが同じなら、必要に応じて get_todo で詳細を確認し、候補の違いを伝える。

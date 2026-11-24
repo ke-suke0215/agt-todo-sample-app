@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import type { ChatEvent } from '../contracts.ts';
+import type { ChatEvent, Conversation } from '../contracts.ts';
 import {
   chatInput,
   deleteDecisionSchema,
@@ -15,9 +15,28 @@ export function chatRoutes(store: Store, chat?: Chat) {
   const activeConversations = new Set<string>();
 
   app.get('/status', (context) => context.json({ enabled: Boolean(chat) }));
-  app.get('/conversations', (context) =>
-    context.json(store.listConversations()),
-  );
+  app.get('/conversations', async (context) => {
+    const references = store.listConversations();
+    const conversations: Conversation[] = [];
+    const batchSize = 6;
+    const signal = AbortSignal.any([
+      context.req.raw.signal,
+      AbortSignal.timeout(5000),
+    ]);
+    for (let offset = 0; offset < references.length; offset += batchSize) {
+      const batch = await Promise.all(
+        references.slice(offset, offset + batchSize).map(async (reference) => ({
+          ...reference,
+          title:
+            chat && !signal.aborted
+              ? await chat.title(reference.id, signal).catch(() => null)
+              : null,
+        })),
+      );
+      conversations.push(...batch);
+    }
+    return context.json(conversations);
+  });
   app.get('/conversations/:id', async (context) => {
     if (!chat)
       return context.json({ error: 'OpenAI APIキーを設定してください。' }, 503);

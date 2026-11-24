@@ -100,6 +100,7 @@ export function ChatPanel({
   const [items, setItems] = useState<ChatItem[]>([]);
   const [history, setHistory] = useState<Conversation[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string>();
   const [effort, setEffort] = useState<ChatInput['effort']>('medium');
   const [text, setText] = useState('');
@@ -131,9 +132,14 @@ export function ChatPanel({
   }, [items, activity]);
 
   async function listHistory() {
-    setHistory(
-      await getJson('/api/chat/conversations', z.array(conversationSchema)),
-    );
+    setHistoryLoading(true);
+    try {
+      setHistory(
+        await getJson('/api/chat/conversations', z.array(conversationSchema)),
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   async function toggleHistory() {
@@ -330,11 +336,20 @@ export function ChatPanel({
                 aria-current={conversation.id === conversationId}
                 onClick={() => void openHistory(conversation.id)}
               >
-                <MessageSquare size={15} />
-                {date.format(new Date(conversation.updatedAt))}
-                {conversation.id === conversationId && <Check size={15} />}
+                <MessageSquare size={15} aria-hidden="true" />
+                <span className="history-entry">
+                  <strong>{conversation.title ?? 'タイトルなし'}</strong>
+                  <time dateTime={conversation.updatedAt}>
+                    {date.format(new Date(conversation.updatedAt))}
+                  </time>
+                </span>
+                {conversation.id === conversationId && (
+                  <Check size={15} aria-hidden="true" />
+                )}
               </button>
             ))
+          ) : historyLoading ? (
+            <p role="status">会話履歴を読み込んでいます…</p>
           ) : (
             <p>会話履歴はまだありません。</p>
           )}

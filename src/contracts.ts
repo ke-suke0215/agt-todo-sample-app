@@ -62,9 +62,12 @@ export const chatInput = z.object({
   conversationId: z.string().max(150).optional(),
 });
 export type ChatInput = z.output<typeof chatInput>;
-export const conversationSchema = z.object({
+export const conversationReferenceSchema = z.object({
   id: z.string(),
   updatedAt: z.iso.datetime(),
+});
+export const conversationSchema = conversationReferenceSchema.extend({
+  title: z.string().nullable(),
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 

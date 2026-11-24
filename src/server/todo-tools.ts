@@ -41,24 +41,30 @@ export function todoTools(
     tool({
       name: 'search_todos',
       description:
-        'タイトルと詳細をキーワードで部分一致検索し、ステータスで絞る。候補のID・タイトル・ステータスを最大20件と、全一致件数を返す。絞り込み不要の引数はnull。',
+        'タイトルと詳細をキーワードで部分一致検索し、ステータスで絞る。カテゴリ検索では言い換えの配列を渡し、どれかに一致するTodoを返す。候補のID・タイトル・ステータスを最大20件と、全一致件数を返す。絞り込み不要の引数はnull。',
       parameters: z.object({
-        keyword: z.string().nullable(),
+        keyword: z.union([z.string(), z.array(z.string())]).nullable(),
         statuses: z.array(status).nullable(),
       }),
       execute: (args): ToolResult => {
-        const keyword = args.keyword?.trim().toLowerCase() ?? '';
-        if (keyword.length > inputLimits.details)
+        const terms = Array.isArray(args.keyword)
+          ? args.keyword
+          : [args.keyword ?? ''];
+        const keywords = terms
+          .map((term) => term.trim().toLowerCase())
+          .filter(Boolean);
+        if (keywords.some((keyword) => keyword.length > inputLimits.details))
           return { ok: false, message: '検索キーワードが長すぎます。' };
         const statuses = args.statuses;
-        const matches = store
-          .listTodos()
-          .filter(
-            (todo) =>
-              (!statuses?.length || statuses.includes(todo.status)) &&
-              (todo.title.toLowerCase().includes(keyword) ||
-                todo.details.toLowerCase().includes(keyword)),
+        const matches = store.listTodos().filter((todo) => {
+          if (statuses?.length && !statuses.includes(todo.status)) return false;
+          if (!keywords.length) return true;
+          const title = todo.title.toLowerCase();
+          const details = todo.details.toLowerCase();
+          return keywords.some(
+            (keyword) => title.includes(keyword) || details.includes(keyword),
           );
+        });
         return {
           ok: true,
           matches: matches

@@ -445,6 +445,21 @@ svg {
 .history button[aria-current="true"] {
   background: var(--pale);
 }
+.history svg {
+  flex-shrink: 0;
+}
+.history-entry {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+.history-entry strong {
+  overflow-wrap: anywhere;
+}
+.history-entry time {
+  color: var(--muted);
+}
 .chat-scroll {
   flex: 1;
   min-height: 0;
