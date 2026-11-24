@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { z } from 'zod';
 import type { Todo, TodoInput } from '../contracts.ts';
 import { conversationSchema, todoSchema } from '../contracts.ts';
 
 const owner = 'local';
 const migrations = new URL('../../migrations/', import.meta.url);
 const todoColumns = 'id, title, details, status, created_at AS createdAt';
+const versionedTodo = todoSchema.extend({ revision: z.number().int() });
 
 export function openStore(path: string) {
   const db = new DatabaseSync(path, { timeout: 5000 });
@@ -42,6 +44,14 @@ export function openStore(path: string) {
         .all(owner)
         .map((row) => todoSchema.parse(row));
     },
+    getTodo(id: string) {
+      const row = db
+        .prepare(
+          `SELECT ${todoColumns}, revision FROM todos WHERE owner_id = ? AND id = ?`,
+        )
+        .get(owner, id);
+      return row && versionedTodo.parse(row);
+    },
     createTodo(input: TodoInput): Todo {
       const todo = {
         ...input,
@@ -60,11 +70,19 @@ export function openStore(path: string) {
       );
       return todo;
     },
-    updateTodo(id: string, input: TodoInput) {
+    updateTodo(id: string, input: Partial<TodoInput>) {
       const saved = db
-        .prepare(`UPDATE todos SET title = ?, details = ?, status = ?
+        .prepare(`UPDATE todos SET title = COALESCE(?, title),
+          details = COALESCE(?, details), status = COALESCE(?, status),
+          revision = revision + 1
         WHERE owner_id = ? AND id = ? RETURNING ${todoColumns}`)
-        .get(input.title, input.details, input.status, owner, id);
+        .get(
+          input.title ?? null,
+          input.details ?? null,
+          input.status ?? null,
+          owner,
+          id,
+        );
       return saved && todoSchema.parse(saved);
     },
     deleteTodo(id: string) {
@@ -72,6 +90,15 @@ export function openStore(path: string) {
         db
           .prepare('DELETE FROM todos WHERE owner_id = ? AND id = ?')
           .run(owner, id).changes > 0
+      );
+    },
+    deleteTodoAtRevision(id: string, revision: number) {
+      return (
+        db
+          .prepare(
+            'DELETE FROM todos WHERE owner_id = ? AND id = ? AND revision = ?',
+          )
+          .run(owner, id, revision).changes > 0
       );
     },
     listConversations() {

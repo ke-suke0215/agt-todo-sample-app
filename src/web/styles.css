@@ -788,3 +788,24 @@ svg {
     animation: none;
   }
 }
+
+.delete-confirmation {
+  margin: 7px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+
+.delete-confirmation p {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+}
+
+.delete-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+  margin-top: 10px;
+}

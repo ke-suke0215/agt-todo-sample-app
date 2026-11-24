@@ -36,6 +36,16 @@ export const todoSchema = todoFields.extend({
   createdAt: z.iso.datetime(),
 });
 export type Todo = z.infer<typeof todoSchema>;
+export const todoSummarySchema = todoSchema.pick({
+  id: true,
+  title: true,
+  status: true,
+});
+export const todoPatch = todoFields
+  .partial()
+  .refine((fields) =>
+    Object.values(fields).some((value) => value !== undefined),
+  );
 
 export const efforts = [
   'none',
@@ -58,11 +68,49 @@ export const conversationSchema = z.object({
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 
-export const toolResultSchema = z.discriminatedUnion('ok', [
+export const todoToolLabels = {
+  create_todo: 'Todoを追加',
+  search_todos: 'Todoを検索',
+  get_todo: 'Todoの詳細を取得',
+  update_todo: 'Todoを更新',
+  delete_todo: 'Todoの削除を確認',
+} as const;
+export const todoToolNameSchema = z.enum([
+  'create_todo',
+  'search_todos',
+  'get_todo',
+  'update_todo',
+  'delete_todo',
+]);
+
+export const toolResultSchema = z.union([
+  z.object({ ok: z.literal(true), approvalId: z.uuid(), todo: todoSchema }),
   z.object({ ok: z.literal(true), todo: todoSchema }),
+  z.object({
+    ok: z.literal(true),
+    matches: z.array(todoSummarySchema),
+    total: z.number().int().nonnegative(),
+  }),
   z.object({ ok: z.literal(false), message: z.string() }),
 ]);
 export type ToolResult = z.infer<typeof toolResultSchema>;
+export const deleteApprovalSchema = z.discriminatedUnion('state', [
+  z.object({
+    state: z.enum(['pending', 'changed']),
+    id: z.uuid(),
+    revision: z.number().int().nonnegative(),
+    todo: todoSchema,
+  }),
+  z.object({ state: z.enum(['deleted', 'cancelled', 'missing', 'expired']) }),
+]);
+export type DeleteApproval = z.infer<typeof deleteApprovalSchema>;
+export const deleteDecisionSchema = z.discriminatedUnion('decision', [
+  z.object({
+    decision: z.literal('approve'),
+    revision: z.number().int().nonnegative(),
+  }),
+  z.object({ decision: z.literal('cancel') }),
+]);
 
 export const chatItemSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -76,6 +124,7 @@ export const chatItemSchema = z.discriminatedUnion('kind', [
     name: z.string(),
     args: z.json(),
     result: toolResultSchema.optional(),
+    approval: deleteApprovalSchema.optional(),
   }),
 ]);
 export type ChatItem = z.infer<typeof chatItemSchema>;
@@ -98,6 +147,7 @@ export const chatEventSchema = z.discriminatedUnion('type', [
     type: z.literal('tool_result'),
     id: z.string(),
     result: toolResultSchema,
+    approval: deleteApprovalSchema.optional(),
   }),
   z.object({ type: z.literal('error'), message: z.string() }),
 ]);
