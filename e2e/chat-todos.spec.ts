@@ -122,6 +122,23 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
       case 10:
         item = deleteCall();
         break;
+      case 12:
+        item = call('search_todos', {
+          keyword: ['読む', '読書', '読了', '技術書'],
+          statuses: null,
+        });
+        break;
+      case 13:
+        expect(result).toMatchObject({
+          ok: true,
+          total: 2,
+          matches: [
+            { title: '読書', status: 'done' },
+            { title: '技術書読む', status: 'pending' },
+          ],
+        });
+        item = reply('「読書」と「技術書読む」があります。');
+        break;
       default:
         expect(result).toMatchObject({
           ok: true,
@@ -167,9 +184,9 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
   await using mock = await listen(upstream);
   await using app = await launchTestApp(`${mock.url}/v1`);
   const base = `${app.url}/api/todos`;
-  async function seed(details: string, status: string) {
+  async function seed(details: string, status: string, title = '牛乳を買う') {
     const response = await request.post(base, {
-      data: { title: '牛乳を買う', details, status },
+      data: { title, details, status },
     });
     expect(response.ok()).toBe(true);
     return todoSchema.parse(await response.json());
@@ -245,4 +262,12 @@ test('候補が0件・複数・1件の場合にチャットから検索・更新
     .parse(await (await request.get(base)).json());
   expect(remaining.find(({ id }) => id === target.id)).toBeUndefined();
   expect(remaining.find(({ id }) => id === other.id)).toEqual(other);
+
+  await seed('', 'pending', '技術書読む');
+  await seed('', 'done', '読書');
+  await seed('', 'pending', '本棚を片付ける');
+  await send(
+    '本を読む系のタスクなにがある？',
+    '「読書」と「技術書読む」があります。',
+  );
 });

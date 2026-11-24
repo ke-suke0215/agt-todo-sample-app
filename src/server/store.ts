@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import type { Todo, TodoInput } from '../contracts.ts';
-import { conversationSchema, todoSchema } from '../contracts.ts';
+import { conversationReferenceSchema, todoSchema } from '../contracts.ts';
 
 const owner = 'local';
 const migrations = new URL('../../migrations/', import.meta.url);
@@ -107,7 +107,7 @@ export function openStore(path: string) {
           'SELECT id, updated_at AS updatedAt FROM conversations WHERE owner_id = ? ORDER BY updated_at DESC',
         )
         .all(owner)
-        .map((row) => conversationSchema.parse(row));
+        .map((row) => conversationReferenceSchema.parse(row));
     },
     hasConversation(id: string) {
       return Boolean(

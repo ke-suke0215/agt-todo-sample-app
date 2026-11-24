@@ -36,7 +36,9 @@ for (const scenario of ['success', 'failure', 'disconnect'] as const) {
         { type: 'output_text', text: 'Todoに追加しました。', annotations: [] },
       ],
     };
-    const firstInput = 'パンを買う、を追加';
+    const titlePrefix = `パンを買う、を追加${'🍞'.repeat(31)}`;
+    const firstInput = `${titlePrefix}、それと牛乳も\n詳しい内容はここに書く`;
+    const historyTitle = `${titlePrefix}…`;
     let result = '';
     let receivedEffort = '';
     upstream.post('/v1/conversations', (context) =>
@@ -47,18 +49,29 @@ for (const scenario of ['success', 'failure', 'disconnect'] as const) {
         metadata: {},
       }),
     );
-    upstream.get('/v1/conversations/:id/items', (context) =>
-      context.json({
+    upstream.get('/v1/conversations/:id/items', (context) => {
+      const user = {
+        type: 'message',
+        id: 'msg_user',
+        role: 'user',
+        status: 'completed',
+        content: [{ type: 'input_text', text: firstInput }],
+      };
+      if (context.req.query('limit') === '1') {
+        expect(context.req.query('order')).toBe('asc');
+        return context.json({
+          object: 'list',
+          has_more: true,
+          data: [user],
+          first_id: user.id,
+          last_id: user.id,
+        });
+      }
+      return context.json({
         object: 'list',
         has_more: false,
         data: [
-          {
-            type: 'message',
-            id: 'msg_user',
-            role: 'user',
-            status: 'completed',
-            content: [{ type: 'input_text', text: firstInput }],
-          },
+          user,
           call,
           ...(completedReply
             ? [
@@ -75,8 +88,8 @@ for (const scenario of ['success', 'failure', 'disconnect'] as const) {
         ],
         first_id: 'msg_user',
         last_id: completedReply ? reply.id : call.id,
-      }),
-    );
+      });
+    });
     upstream.post('/v1/responses', async (context) => {
       const input = await context.req.json<{
         conversation: string;
@@ -203,10 +216,14 @@ for (const scenario of ['success', 'failure', 'disconnect'] as const) {
         await page
           .getByRole('button', { name: '会話履歴', exact: true })
           .click();
-        await page
+        const historyEntry = page
           .getByRole('region', { name: '会話一覧' })
-          .getByRole('button')
-          .click();
+          .getByRole('button', { name: new RegExp(historyTitle) });
+        await expect(historyEntry.locator('time')).toHaveAttribute(
+          'datetime',
+          /^\d{4}-\d{2}-\d{2}T/,
+        );
+        await historyEntry.click();
         await expect(page.getByText(firstInput, { exact: true })).toBeVisible();
         await expect(page.getByText('成功', { exact: true })).toBeVisible();
         await expect(
